@@ -4,8 +4,6 @@ name: DevSecOps Pipeline para OWASP Juice Shop
 on:
   push:
     branches:
-      - develop # Branch principal do projeto OWASP Juice Shop (se o leitor forkar e usar esta branch)
-      - main    # Caso o leitor use 'main' como branch principal em seu fork
       - master  # Caso o leitor use 'master' como branch principal em seu fork
   pull_request:
     branches:
