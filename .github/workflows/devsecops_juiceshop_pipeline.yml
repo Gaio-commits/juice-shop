@@ -43,7 +43,7 @@ jobs:
   # Ferramentas: Semgrep e GitHub CodeQL
   # =====================================================================================
   sast-analysis:
-    name: Análise Estática de Segurança (SAST com Semgrep e CodeQL)
+    name: Análise Estática de Segurança (SAST com Semgrep)
     runs-on: ubuntu-latest
     permissions: # Permissões necessárias para as actions deste job
       actions: read      # Para o CodeQL ler informações do workflow
