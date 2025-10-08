@@ -161,7 +161,7 @@ jobs:
           # O caminho onde o Dependency-Check armazena seus dados
           path: ~/.dependency-check/data
           # A chave única para o cache de hoje
-          key: ${{ runner.os }}-dc-nvd-cache-v2-${{ env.DATE }}
+          key: ${{ runner.os }}-dc-nvd-cache-v3-${{ env.DATE }}
           # Chave de fallback para restaurar o cache mais recente de dias anteriores
           restore-keys: |
             ${{ runner.os }}-dc-nvd-cache-
@@ -169,7 +169,7 @@ jobs:
       # Passo 3.10: Baixar a ferramenta OWASP Dependency-Check CLI.
       - name: Download OWASP Dependency-Check
         run: |
-         DC_VERSION="10.0.2"
+         DC_VERSION="12.1.0"
           echo "Baixando OWASP Dependency-Check versão ${DC_VERSION}..."
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
