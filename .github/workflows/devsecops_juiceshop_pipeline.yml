@@ -357,7 +357,7 @@ jobs:
     if: failure() # Condição para executar este job
     # Este job 'needs' (depende de) todos os jobs principais de análise.
     # Se qualquer um deles falhar, este job será acionado.
-    needs: [lint-files, sast-analysis, sca-analysis, secrets-scan, scan-official-juice-shop-image, dast-analysis]
+    needs: [sast-analysis, sca-analysis, secrets-scan, scan-official-juice-shop-image, dast-analysis]
     runs-on: ubuntu-latest
     steps:
       # Passo 7.1: Enviar uma mensagem de erro visível nos logs da Action.
