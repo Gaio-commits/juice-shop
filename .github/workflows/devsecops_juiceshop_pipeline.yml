@@ -161,7 +161,7 @@ jobs:
           # O caminho onde o Dependency-Check armazena seus dados
           path: ~/.dependency-check/data
           # A chave única para o cache de hoje
-          key: ${{ runner.os }}-dc-nvd-cache-${{ env.DATE }}
+          key: ${{ runner.os }}-dc-nvd-cache-v2-${{ env.DATE }}
           # Chave de fallback para restaurar o cache mais recente de dias anteriores
           restore-keys: |
             ${{ runner.os }}-dc-nvd-cache-
