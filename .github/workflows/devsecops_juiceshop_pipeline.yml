@@ -235,40 +235,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write 
-      actions: read 
+      security-events: write
+      actions: read
     steps:
-      # Passo 4.1: Baixar o código-fonte do fork do leitor COM HISTÓRICO COMPLETO.
-      - name: Checkout do código do repositório (fork do leitor, com histórico completo)
+      - name: Checkout do código (com histórico completo)
         uses: actions/checkout@v4
         with:
-           fetch-depth: 0 # Crucial para Gitleaks analisar todo o histórico
+          fetch-depth: 0
 
-      # Passo 4.2: Executar Gitleaks.
       - name: Executar Gitleaks
         uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_REPORT_FORMAT: "sarif"
-          GITLEAKS_REPORT_PATH: "gitleaks-report.sarif"
-          GITLEAKS_EXIT_CODE: "0"
-          # GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false" # Desabilitar se quisermos controlar o upload nós mesmos
+        # A action irá gerar 'results.sarif' e fazer o upload como artefato automaticamente.
+        # As variáveis de ambiente para nome do arquivo são ignoradas.
 
-      # Passo 4.3: Fazer upload do relatório SARIF do Gitleaks como artefato.
-      - name: Upload do relatório SARIF do Gitleaks (Artefato para download)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Gitleaks-Scan-Results
-          path: gitleaks-report.sarif # Nome definido em GITLEAKS_REPORT_PATH
-          if-no-files-found: warn # Apenas avisa se o arquivo não for encontrado (ex: nenhum segredo)
+      # O passo de upload de artefato manual foi REMOVIDO.
 
-      # Passo 4.4: Enviar o relatório SARIF do Gitleaks para a aba "Security" do GitHub.
       - name: Upload do resultado SARIF do Gitleaks para GitHub Security
-        if: always() && hashFiles('gitleaks-report.sarif') != ''
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: gitleaks-report.sarif
-          category: gitleaks-juiceshop    
+          # NOME DO ARQUIVO CORRIGIDO para o novo padrão da action
+          sarif_file: results.sarif
+          category: gitleaks-juiceshop   
 
   # =====================================================================================
   # ETAPA 5: SCAN DE IMAGEM DE CONTAINER (Imagem Oficial do Juice Shop)
