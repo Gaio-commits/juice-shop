@@ -21,7 +21,7 @@ jobs:
   # Ferramentas: Semgrep e GitHub CodeQL
   # =====================================================================================
   sast-analysis:
-    name: Análise Estática de Segurança (SAST com Semgrep e CodeQL)
+    name: Análise Estática de Segurança (SAST com Semgrep)
     runs-on: ubuntu-latest
     permissions: # Permissões necessárias para as actions deste job
       actions: read      # Para o CodeQL ler informações do workflow
@@ -85,6 +85,15 @@ jobs:
       # Passo 3.1: Baixar o código-fonte do fork do leitor.
       - name: Checkout do código do repositório (fork do leitor)
         uses: actions/checkout@v4
+
+      - name: Gerar/Atualizar package-lock.json (ignorando scripts)
+        run: |
+          echo "Gerando/Atualizando package-lock.json..."
+          npm install --package-lock-only --ignore-scripts
+          if [ ! -f "package-lock.json" ]; then
+            echo "::error::Arquivo package-lock.json não foi gerado/atualizado."
+            exit 1
+          fi
 
       # Passo 3.6: Gerar o Software Bill of Materials (SBOM) no formato CycloneDX JSON usando Syft.
       # Syft escaneia o diretório do projeto e identifica componentes.
@@ -160,11 +169,11 @@ jobs:
       # Passo 3.10: Baixar a ferramenta OWASP Dependency-Check CLI.
       - name: Download OWASP Dependency-Check
         run: |
-          DC_VERSION="12.1.0" # ATENÇÃO: Verifique e use a última versão estável!
+         DC_VERSION="10.0.2"
           echo "Baixando OWASP Dependency-Check versão ${DC_VERSION}..."
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
-
+          
       # Passo 3.11: Executar o OWASP Dependency-Check.
       - name: Executar OWASP Dependency-Check
         # 'continue-on-error: true' permite que o workflow continue mesmo se o script interno do DC
@@ -237,12 +246,12 @@ jobs:
 
       # Passo 4.2: Executar Gitleaks.
       - name: Executar Gitleaks
-        uses: gitleaks/gitleaks-action@v2 # Verifique a versão mais recente
+        uses: gitleaks/gitleaks-action@v2.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_REPORT_FORMAT: "sarif"
-          GITLEAKS_REPORT_PATH: "gitleaks-report.sarif" # Define o nome do arquivo de saída
-          GITLEAKS_EXIT_CODE: "0" # Para fins didáticos, não falha o build se segredos forem encontrados
+          GITLEAKS_REPORT_PATH: "gitleaks-report.sarif"
+          GITLEAKS_EXIT_CODE: "0"
           # GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false" # Desabilitar se quisermos controlar o upload nós mesmos
 
       # Passo 4.3: Fazer upload do relatório SARIF do Gitleaks como artefato.
@@ -277,16 +286,16 @@ jobs:
       - name: Checkout do código (contexto do workflow)
         uses: actions/checkout@v4
 
-      # Passo 5.2: Scan da imagem Docker oficial do Juice Shop usando a action do Trivy.
       - name: Scan da Imagem Docker Oficial com Trivy
-        uses: aquasecurity/trivy-action@0.30.0 # ATENÇÃO: Verifique a versão mais recente!
+        # AJUSTE FINAL: Versão atualizada e fixada.
+        uses: aquasecurity/trivy-action@0.22.0
         with:
           image-ref: 'bkimminich/juice-shop:latest'
           format: 'sarif'
           output: 'trivy-juiceshop-official-results.sarif'
-          severity: 'CRITICAL,HIGH' # Foco nas mais graves
-          ignore-unfixed: true      # Não falhar por vulnerabilidades sem correção disponível
-          exit-code: '0'            # Para fins didáticos, não falhar o build
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'
             
       # Passo 5.3: Fazer upload do relatório SARIF do Trivy como artefato.
       - name: Upload do relatório SARIF do Trivy (Imagem Oficial - Artefato)
