@@ -119,8 +119,8 @@ jobs:
           unzip dependency-check-${DC_VERSION}-release.zip
 
       - name: Executar OWASP Dependency-Check
-        id: run-dependency-check # Adicionado um ID para referência
-        continue-on-error: true # Mantido para não falhar o build, mas o log será salvo
+        id: run-dependency-check
+        continue-on-error: true
         run: |
           echo "Iniciando OWASP Dependency-Check..."
           # AVISO: Configure o segredo NVD_API_KEY no seu repositório para evitar falhas.
@@ -249,7 +249,6 @@ jobs:
           echo "Juice Shop iniciado!"
 
       - name: Executar OWASP ZAP Baseline Scan no Juice Shop
-        # CORREÇÃO: Versão da action ajustada para a mais recente e estável.
         uses: zaproxy/action-baseline@v0.14.0
         with:
           target: 'http://localhost:3000'
