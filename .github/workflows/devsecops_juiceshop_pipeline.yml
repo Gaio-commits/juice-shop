@@ -1,28 +1,25 @@
 name: DevSecOps Pipeline para OWASP Juice Shop
 
-# Define quando este workflow será acionado
 on:
   push:
     branches:
-      - master  # Caso o leitor use 'master' como branch principal em seu fork
+      - master
   pull_request:
     branches:
       - develop
       - main
       - master
-  workflow_dispatch: # Permite o acionamento manual do workflow pela interface do GitHub
+  workflow_dispatch:
 
 jobs:
   # =====================================================================================
   # ETAPA 1: LINTING DE ARQUIVOS DA PIPELINE
-  # Objetivo: Garantir que os arquivos de configuração da pipeline sigam padrões de qualidade.
-  # Ferramenta: yamllint
   # =====================================================================================
   lint-files:
     name: Linting de Arquivos da Pipeline (YAML)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código do repositório (fork do leitor)
+      - name: Checkout do código do repositório
         uses: actions/checkout@v4
 
       - name: Lint dos arquivos YAML da pipeline
@@ -33,9 +30,7 @@ jobs:
           config_file: .yamllint.yml
 
   # =====================================================================================
-  # ETAPA 2: ANÁLISE ESTÁTICA DE SEGURANça DE APLICAÇÃO (SAST)
-  # Objetivo: Analisar o código-fonte em busca de padrões de vulnerabilidades.
-  # Ferramenta: Semgrep
+  # ETAPA 2: ANÁLISE ESTÁTICA DE SEGURANÇA DE APLICAÇÃO (SAST)
   # =====================================================================================
   sast-analysis:
     name: Análise Estática de Segurança (SAST com Semgrep)
@@ -45,7 +40,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - name: Checkout do código do repositório (fork do leitor)
+      - name: Checkout do código do repositório
         uses: actions/checkout@v4
 
       - name: Configurar Semgrep
@@ -54,7 +49,7 @@ jobs:
       - name: Executar Semgrep
         run: semgrep scan --config "p/default" --sarif --output semgrep.sarif || true
 
-      - name: Upload do relatório SARIF do Semgrep (Artefato para download)
+      - name: Upload do relatório SARIF do Semgrep
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
@@ -70,8 +65,6 @@ jobs:
 
   # =====================================================================================
   # ETAPA 3: ANÁLISE DE COMPOSIÇÃO DE SOFTWARE (SCA) E GERAÇÃO DE SBOM
-  # Objetivo: Identificar vulnerabilidades em dependências de terceiros e gerar um SBOM.
-  # Ferramentas: Syft (para SBOM), OWASP Dependency-Check
   # =====================================================================================
   sca-analysis:
     name: Análise de Composição de Software (SCA) e Geração de SBOM
@@ -80,32 +73,25 @@ jobs:
       contents: read
       security-events: write
     steps:
-      # Passo 3.1: Baixar o código-fonte.
-      - name: Checkout do código do repositório (fork do leitor)
+      - name: Checkout do código do repositório
         uses: actions/checkout@v4
 
-      # Passo 3.2: Configurar o ambiente Node.js.
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      # Passo 3.3: Gerar/Atualizar package-lock.json.
-      - name: Gerar/Atualizar package-lock.json (ignorando scripts)
+      - name: Gerar/Atualizar package-lock.json
         run: |
-          echo "Gerando/Atualizando package-lock.json..."
           npm install --package-lock-only --ignore-scripts
           if [ ! -f "package-lock.json" ]; then
-            echo "::error::Arquivo package-lock.json não foi gerado/atualizado."
+            echo "::error::Arquivo package-lock.json não foi gerado."
             exit 1
           fi
 
-      # Passo 3.4: Gerar o Software Bill of Materials (SBOM) com Syft.
-      - name: Gerar SBOM com Syft (CycloneDX JSON)
+      - name: Gerar SBOM com Syft
         run: |
-          echo "Instalando Syft..."
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          echo "Gerando SBOM do diretório atual..."
           syft . -o cyclonedx-json=bom.json || echo "::warning::Falha ao gerar SBOM com Syft."
           if [ ! -s bom.json ]; then
             echo "::error::Arquivo bom.json (SBOM) NÃO foi gerado ou está vazio."
@@ -113,7 +99,6 @@ jobs:
           fi
         shell: bash
 
-      # Passo 3.5: Fazer upload do SBOM como artefato.
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
@@ -121,30 +106,24 @@ jobs:
           path: bom.json
           if-no-files-found: error
 
-      # --- SCA com OWASP Dependency-Check ---
-      # Passo 3.6: Configurar Java.
       - name: Configurar Java para Dependency-Check
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '11'
 
-      # Passo 3.7: Baixar o OWASP Dependency-Check.
       - name: Download OWASP Dependency-Check
         run: |
-          # ATUALIZADO: Verifique e use a última versão estável em https://github.com/jeremylong/DependencyCheck/releases
           DC_VERSION="10.0.2"
-          echo "Baixando OWASP Dependency-Check versão ${DC_VERSION}..."
           wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
           unzip dependency-check-${DC_VERSION}-release.zip
 
-      # Passo 3.8: Executar o OWASP Dependency-Check.
       - name: Executar OWASP Dependency-Check
-        continue-on-error: true
+        id: run-dependency-check # Adicionado um ID para referência
+        continue-on-error: true # Mantido para não falhar o build, mas o log será salvo
         run: |
           echo "Iniciando OWASP Dependency-Check..."
-          # AVISO: A API Key da NVD é ESSENCIAL para evitar falhas e lentidão.
-          # Configure o secret NVD_API_KEY nas configurações do seu repositório.
+          # AVISO: Configure o segredo NVD_API_KEY no seu repositório para evitar falhas.
           ./dependency-check/bin/dependency-check.sh \
             --scan . \
             --project "OWASP-Juice-Shop-Fork" \
@@ -154,24 +133,22 @@ jobs:
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
             --log dependency-check.log \
             --failOnCVSS 11
-          
-          if [ ! -f dependency-check-results.sarif ]; then
-            echo "::error::Arquivo dependency-check-results.sarif NÃO foi gerado."
-            if [ -f dependency-check.log ]; then
-              echo "Log do Dependency-Check (últimas 50 linhas):"
-              tail -n 50 dependency-check.log
-            fi
-          fi
 
-      # Passo 3.9: Fazer upload do relatório do Dependency-Check como artefato.
-      - name: Upload do relatório SARIF do Dependency-Check (Artefato)
+      - name: Upload do Log de Depuração do Dependency-Check em caso de falha
+        if: steps.run-dependency-check.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dependency-Check-Debug-Log
+          path: dependency-check.log
+          if-no-files-found: ignore
+
+      - name: Upload do relatório SARIF do Dependency-Check
         uses: actions/upload-artifact@v4
         with:
           name: Dependency-Check-Scan-Results
           path: dependency-check-results.sarif
           if-no-files-found: warn
 
-      # Passo 3.10: Enviar o relatório do Dependency-Check para a aba "Security".
       - name: Upload do resultado SARIF do Dependency-Check para GitHub Security
         if: always() && hashFiles('dependency-check-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
@@ -181,8 +158,6 @@ jobs:
 
   # =====================================================================================
   # ETAPA 4: SCAN DE SEGREDOS
-  # Objetivo: Verificar se há segredos commitados no código-fonte, incluindo histórico.
-  # Ferramenta: Gitleaks
   # =====================================================================================
   secrets-scan:
     name: Varredura de Segredos com Gitleaks
@@ -205,7 +180,7 @@ jobs:
           GITLEAKS_REPORT_PATH: "gitleaks-report.sarif"
           GITLEAKS_EXIT_CODE: "0"
 
-      - name: Upload do relatório SARIF do Gitleaks (Artefato)
+      - name: Upload do relatório SARIF do Gitleaks
         uses: actions/upload-artifact@v4
         with:
           name: Gitleaks-Scan-Results
@@ -220,9 +195,7 @@ jobs:
           category: gitleaks-juiceshop
 
   # =====================================================================================
-  # ETAPA 5: SCAN DE IMAGEM DE CONTAINER (Imagem Oficial do Juice Shop)
-  # Objetivo: Analisar a imagem Docker oficial em busca de vulnerabilidades.
-  # Ferramenta: Trivy
+  # ETAPA 5: SCAN DE IMAGEM DE CONTAINER
   # =====================================================================================
   scan-official-juice-shop-image:
     name: Scan da Imagem Docker Oficial do Juice Shop com Trivy
@@ -230,7 +203,7 @@ jobs:
     permissions:
       security-events: write
     steps:
-      - name: Checkout do código (contexto do workflow)
+      - name: Checkout do código
         uses: actions/checkout@v4
 
       - name: Scan da Imagem Docker Oficial com Trivy
@@ -243,7 +216,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
 
-      - name: Upload do relatório SARIF do Trivy (Artefato)
+      - name: Upload do relatório SARIF do Trivy
         uses: actions/upload-artifact@v4
         with:
           name: Trivy-OfficialImageScan-Results
@@ -259,14 +232,12 @@ jobs:
 
   # =====================================================================================
   # ETAPA 6: ANÁLISE DINÂMICA DE SEGURANÇA DE APLICAÇÃO (DAST)
-  # Objetivo: Testar a aplicação em execução, simulando ataques.
-  # Ferramenta: OWASP ZAP (Baseline Scan)
   # =====================================================================================
   dast-analysis:
     name: Análise Dinâmica (DAST com ZAP no Juice Shop)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código (para arquivo de regras do ZAP)
+      - name: Checkout do código
         uses: actions/checkout@v4
 
       - name: Iniciar OWASP Juice Shop Docker container
@@ -278,7 +249,8 @@ jobs:
           echo "Juice Shop iniciado!"
 
       - name: Executar OWASP ZAP Baseline Scan no Juice Shop
-        uses: zaproxy/action-baseline@v1.0.0
+        # CORREÇÃO: Versão da action ajustada para a mais recente e estável.
+        uses: zaproxy/action-baseline@v0.14.0
         with:
           target: 'http://localhost:3000'
           rules_file_name: '.zap_juiceshop_rules.tsv'
@@ -292,8 +264,7 @@ jobs:
           docker rm juice-shop-dast || true
 
   # =====================================================================================
-  # ETAPA 7: NOTIFICAÇÃO EM CASO DE FALHA GERAL DA PIPELINE
-  # Objetivo: Informar se alguma das etapas críticas da pipeline falhou.
+  # ETAPA 7: NOTIFICAÇÃO EM CASO DE FALHA
   # =====================================================================================
   notify-on-failure:
     name: Notificar em Caso de Falha da Pipeline
