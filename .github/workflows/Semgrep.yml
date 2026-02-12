@@ -1,0 +1,69 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - develop
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+
+  # =====================================================================================
+  # ETAPA 2: ANÁLISE ESTÁTICA DE SEGURANÇA DE APLICAÇÃO (SAST)
+  # Objetivo: Analisar o código-fonte do fork do leitor em busca de padrões de
+  # vulnerabilidades conhecidas, sem executar a aplicação.
+  # Ferramentas: Semgrep
+  # =====================================================================================
+  sast-analysis:
+    name: Análise Estática de Segurança (SAST com Semgrep)
+    runs-on: self-hosted
+    permissions: # Permissões necessárias para as actions deste job
+      actions: read 
+      contents: read     # Para fazer checkout do código
+      security-events: write # Para Semgrep enviar resultados para a aba Security
+    steps:
+      # Passo 2.1: Baixar o código-fonte do fork do leitor.
+      # As ferramentas SAST analisarão este código.
+      - name: Checkout do código do repositório (fork do leitor)
+        uses: actions/checkout@v4
+        # Por padrão, faz checkout do branch que acionou o workflow.
+        # Se quiser sempre analisar uma branch específica do fork (ex: 'develop'),
+        # ele pode adicionar:
+        # with:
+        #   ref: 'develop'
+
+      # --- SAST com Semgrep ---
+      # Passo 2.2: Instalar a ferramenta Semgrep.
+      - name: Configurar Semgrep
+        run: pip install semgrep
+
+      # Passo 2.3: Executar o Semgrep com um conjunto de regras padrão (p/default).
+      # O resultado é salvo no formato SARIF.
+      # "|| true" garante que o workflow continue mesmo se o Semgrep encontrar vulnerabilidades.
+      - name: Executar Semgrep
+        run: semgrep scan --config "p/default" --sarif --output semgrep.sarif || true
+
+      # Passo 2.4: Fazer upload do relatório SARIF do Semgrep como um artefato do workflow.
+      # Isso permite que o leitor baixe e analise o relatório completo.
+      - name: Upload do relatório SARIF do Semgrep (Artefato para download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep.sarif
+          if-no-files-found: warn # Apenas avisa se o arquivo não for encontrado
+
+      # Passo 2.5: Enviar o relatório SARIF do Semgrep para a aba "Security" -> "Code scanning alerts" do GitHub.
+      - name: Upload do resultado SARIF do Semgrep para GitHub Security
+        # "if: always()" garante que este passo execute mesmo se o anterior (execução do Semgrep)
+        # falhar por ter encontrado vulnerabilidades (já que usamos "|| true" acima).
+        # "hashFiles('semgrep.sarif') != ''" garante que só tentamos o upload se o arquivo existir e não estiver vazio.
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-juiceshop # Categoria para agrupar os alertas no GitHub
