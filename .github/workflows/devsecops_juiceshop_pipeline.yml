@@ -1,41 +1,40 @@
-name: 🛡️ Lopti AppSec (Full Audit & Fail-Safe)
+name: 🛡️ Lopti AppSec (Full Audit & v4 Integrated)
 
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Botão manual (Essencial para testes)
+  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write # Permite escrever no painel Security
+  security-events: write
   actions: read
 
 jobs:
   # ====================================================
-  # 1. SAST (Semgrep) - Análise Estática de Código
+  # 1. SAST (Semgrep) - Foco em 100% de Cobertura
   # ====================================================
   sast:
     name: 🔍 SAST (Semgrep)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Rodar Semgrep (Fail-Safe)
+      - name: Rodar Semgrep (Full Audit)
         run: |
           pip install semgrep
-          # Gera SARIF para o GitHub e Texto para o seu relatório
-          semgrep scan --config "p/default" --config "p/owasp-top-ten" --sarif --output semgrep.sarif || true
-          semgrep scan --config "p/default" --text > semgrep-report.txt || true
+          # --config auto garante que ele pegue os 42 achados (TS, JS, Python, etc)
+          semgrep scan --config auto --sarif --output semgrep.sarif || true
+          semgrep scan --config auto --text > semgrep-report.txt || true
 
       - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep.sarif
           category: semgrep
-        continue-on-error: true # Ignora erro se não houver licença GHAS
+        continue-on-error: true
 
       - name: 📤 Guardar Relatório TXT
         uses: actions/upload-artifact@v4
@@ -44,46 +43,50 @@ jobs:
           path: semgrep-report.txt
 
   # ====================================================
-  # 2. SCA (Dependency Check) - Bibliotecas de Terceiros
+  # 2. SCA (Dependency Check) - Correção de Argumentos
   # ====================================================
   sca:
     name: 📦 SCA (DepCheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Rodar DepCheck (HTML + SARIF)
+      - name: Rodar DepCheck
         uses: dependency-check/Dependency-Check_Action@main
         with:
           project: 'Lopti-AppSec'
           path: '.'
-          format: 'ALL' # Gera HTML (Auditor) e SARIF (GitHub)
+          format: 'ALL'
           out: 'reports'
-          nvdApiKey: ${{ secrets.LOPTI_NVD_API }}
+          # Correção: Passando a chave NVD via args como a Action exige
+          args: >
+            --nvdApiKey ${{ secrets.LOPTI_NVD_API }}
+            --enableRetired true
         continue-on-error: true
 
       - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        # Garante que só tenta o upload se o arquivo foi gerado
+        if: hashFiles('reports/dependency-check-report.sarif') != ''
         with:
           sarif_file: reports/dependency-check-report.sarif
           category: dependency-check
         continue-on-error: true
 
-      - name: 📤 Guardar Relatório HTML (Foco Auditoria)
+      - name: 📤 Guardar Relatório HTML
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: 2-Relatorio-SCA-Dependencies
+          name: 2-Relatorio-SCA-HTML
           path: reports/dependency-check-report.html
 
   # ====================================================
-  # 3. Secret Scan (Gitleaks) - Bypass de Licença
+  # 3. Secret Scan (Gitleaks) - Correção de Validação SARIF
   # ====================================================
   secrets:
     name: 🔑 Secret Scan
@@ -91,18 +94,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Necessário para ler o histórico do Git
+          fetch-depth: 0
 
-      - name: Rodar Gitleaks (Via Binário - Grátis)
+      - name: Rodar Gitleaks (Versão Estável)
         run: |
-          VERSION="8.18.1"
+          VERSION="8.18.4"
           wget https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz -O gitleaks.tar.gz
           tar -xzf gitleaks.tar.gz
-          # exit-code 0 garante que o PR não quebre se achar chaves
-          ./gitleaks detect --source="." --report-path=gitleaks.sarif --report-format=sarif --exit-code=0 || true
+          # --redact e --exit-code=0 evitam erros de validação e quebra de build
+          ./gitleaks detect --source="." --report-path=gitleaks.sarif --report-format=sarif --redact --exit-code=0 || true
 
       - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: gitleaks.sarif
@@ -110,14 +113,13 @@ jobs:
         continue-on-error: true
 
   # ====================================================
-  # 4. Infrastructure (Trivy) - Arquivos de Infra e Docker
+  # 4. Infra (Trivy) - Container & FS
   # ====================================================
   infra:
     name: 🐳 Trivy (Infra)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Rodar Trivy (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
@@ -126,10 +128,9 @@ jobs:
           output: 'trivy.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
-        continue-on-error: true
 
       - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy.sarif
