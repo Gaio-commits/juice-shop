@@ -30,6 +30,8 @@ jobs:
   sast-analysis:
     name: Análise Estática de Segurança (SAST com Semgrep)
     runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
     steps:
     
       # Passo 1.1: Baixar o código-fonte do fork do leitor.
@@ -50,17 +52,10 @@ jobs:
       # O resultado é salvo no formato SARIF.
       # "|| true" garante que o workflow continue mesmo se o Semgrep encontrar vulnerabilidades.
       - name: Executar Semgrep
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/python
-            p/owasp-top-ten
-            p/bandit
-            p/ci
-          generateSarif: "7.0"
-
-      # Passo 1.4: Fazer upload do relatório SARIF (atualmente .txt) do Semgrep como um artefato do workflow.
-      # Isso permite que o leitor baixe e analise o relatório completo.
+        run: |
+          semgrep scan --config auto --sarif --output semgrep.sarif || true
+      # Passo 1.4: Download do relatório SARIF do Semgrep como um artefato do workflow.
+      # Isso permite que baixar e analisar o relatório completo.
       - name: Upload do relatório SARIF do Semgrep (Artefato para download)
         uses: actions/upload-artifact@v4
         with:
@@ -88,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Passo 2.1: Baixar o código-fonte
-      - name: Checkout do código do repositório (fork do leitor)
+      - name: Checkout do código do repositório (fork)
         uses: actions/checkout@v4
 
       - name: Gerar/Atualizar package-lock.json (ignorando scripts)
