@@ -262,12 +262,6 @@ jobs:
         # A action irá gerar 'results.sarif' e fazer o upload como artefato automaticamente.
         # As variáveis de ambiente para nome do arquivo são ignoradas.
 
-      - name: Upload Relatório (JSON)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Relatorio-Secrets
-          path: gitleaks-report.json
-
       - name: Upload do resultado SARIF do Gitleaks para GitHub Security
         if: always()
         uses: github/codeql-action/upload-sarif@v4
