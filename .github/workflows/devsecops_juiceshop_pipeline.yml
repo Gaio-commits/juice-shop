@@ -1,138 +1,315 @@
-name: 🛡️ Lopti AppSec (Full Audit & v4 Integrated)
+name: Security Audit
 
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
+    inputs:
+      security_checks_enabled:
+        description: 'Rodar checks?'
+        required: true
+        default: true
+        type: boolean
 
+  # Roda automático toda vez que subir código
+  push:
+    branches:
+      - 'feature/appsec-workflow'
+    #  - main  <--- Comentando a main por enquanto para não rodar em produção
 permissions:
   contents: read
   security-events: write
   actions: read
-
+  
 jobs:
-  # ====================================================
-  # 1. SAST (Semgrep) - Foco em 100% de Cobertura
-  # ====================================================
-  sast:
-    name: 🔍 SAST (Semgrep)
+
+  # =====================================================================================
+  # ETAPA 1: ANÁLISE ESTÁTICA DE SEGURANÇA DE APLICAÇÃO (SAST)
+  # Objetivo: Analisar o código-fonte em busca de padrões de
+  # vulnerabilidades conhecidas, sem executar a aplicação.
+  # Ferramentas: Semgrep
+  # =====================================================================================
+  sast-analysis:
+    name: Análise Estática de Segurança (SAST com Semgrep)
     runs-on: ubuntu-latest
+    permissions: # Permissões necessárias para as actions deste job
+      actions: read 
+      contents: read     # Para fazer checkout do código
+      security-events: write # Para Semgrep enviar resultados para a aba Security
     steps:
-      - uses: actions/checkout@v4
-      - name: Rodar Semgrep (Full Audit)
+    
+      # Passo 1.1: Baixar o código-fonte do fork do leitor.
+      # As ferramentas SAST analisarão este código.
+      - name: Checkout do código do repositório (fork do leitor)
+        uses: actions/checkout@v4
+        
+        # Por padrão, faz checkout do branch que acionou o workflow.
+        # Se quiser sempre analisar uma branch específica do fork (ex: 'develop'),
+        # ele pode adicionar:
+        # with:
+        #   ref: 'develop'
+
+      # --- SAST com Semgrep ---
+      # Passo 1.2: Instalar a ferramenta Semgrep.
+      - name: Configurar Semgrep
+        run: pip install semgrep
+
+      # Passo 1.3: Executar o Semgrep com um conjunto de regras padrão (p/default).
+      # O resultado é salvo no formato SARIF.
+      # "|| true" garante que o workflow continue mesmo se o Semgrep encontrar vulnerabilidades.
+      - name: Executar Semgrep
         run: |
-          pip install semgrep
-          # --config auto garante que ele pegue os 42 achados (TS, JS, Python, etc)
-          semgrep scan --config auto --sarif --output semgrep.sarif || true
-          semgrep scan --config auto --text > semgrep-report.txt || true
+          semgrep scan --config "p/default" --sarif --output semgrep.sarif || true
+          echo "--- Resumo Rápido ---"
+          semgrep scan --config "p/default" --text || true
 
-      - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
-        continue-on-error: true
-
-      - name: 📤 Guardar Relatório TXT
+      # Passo 1.4: Fazer upload do relatório SARIF (atualmente .txt) do Semgrep como um artefato do workflow.
+      # Isso permite que o leitor baixe e analise o relatório completo.
+      - name: Upload do relatório SARIF do Semgrep (Artefato para download)
         uses: actions/upload-artifact@v4
         with:
-          name: 1-Relatorio-SAST-Semgrep
-          path: semgrep-report.txt
+          name: semgrep-results
+          path: semgrep.sarif
+          if-no-files-found: warn # Apenas avisa se o arquivo não for encontrado
 
-  # ====================================================
-  # 2. SCA (Dependency Check) - Correção de Argumentos
-  # ====================================================
-  sca:
-    name: 📦 SCA (DepCheck)
+      # Passo 1.5: Enviar o relatório SARIF do Semgrep para a aba "Security" -> "Code scanning alerts" do GitHub.
+      - name: Upload do resultado SARIF do Semgrep para GitHub Security
+        #"hashFiles('semgrep.sarif') != ''" garante que só tentamos o upload se o arquivo existir e não estiver vazio.
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-lopti # Categoria para agrupar os alertas no GitHub
+
+  # =====================================================================================
+  # ETAPA 2: ANÁLISE DE COMPOSIÇÃO DE SOFTWARE (SCA) E GERAÇÃO DE SBOM
+  # Objetivo: Identificar componentes de terceiros (dependências)
+  # e suas vulnerabilidades conhecidas. Também geraremos um Software Bill of Materials (SBOM).
+  # Ferramentas: Syft e OWASP Dependency-Check
+  # =====================================================================================
+  sca-analysis:
+    name: Análise de Composição de Software (SCA) e Geração de SBOM
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Java
+      # Passo 2.1: Baixar o código-fonte
+      - name: Checkout do código do repositório (fork do leitor)
+        uses: actions/checkout@v4
+
+      - name: Gerar/Atualizar package-lock.json (ignorando scripts)
+        run: |
+          echo "Gerando/Atualizando package-lock.json..."
+          npm install --package-lock-only --ignore-scripts
+          if [ ! -f "package-lock.json" ]; then
+            echo "::error::Arquivo package-lock.json não foi gerado/atualizado."
+            exit 1
+          fi
+
+      # Passo 2.2: Gerar o Software Bill of Materials (SBOM) no formato CycloneDX JSON usando Syft.
+      # Syft escaneia o diretório do projeto e identifica componentes.
+      - name: Gerar SBOM com Syft (CycloneDX JSON)
+        run: |
+          echo "Instalando Syft..."
+          # Baixa e instala a última versão do Syft
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          echo "Verificando se package-lock.json existe (Syft o utilizará para dependências Node.js)..."
+          if [ ! -f "package-lock.json" ]; then
+            echo "::warning::Arquivo package-lock.json não encontrado. A análise de dependências do Syft pode ser limitada."
+            # Mesmo sem o lockfile, Syft tentará catalogar o que encontrar, mas o ideal é tê-lo.
+          else
+            echo "package-lock.json encontrado."
+          fi
+          
+          echo "Gerando SBOM do diretório atual ('.') com Syft no formato CycloneDX JSON..."
+          # O comando 'syft .' analisa o diretório atual.
+          # '-o cyclonedx-json' especifica o formato de saída.
+          # O output é direcionado para 'bom.json'.
+          syft . -o cyclonedx-json=bom.json || echo "::warning::Falha ao gerar SBOM com Syft. Verifique os logs acima."
+          
+          # Verificamos se o bom.json foi criado E se contém componentes
+          if [ ! -s bom.json ]; then # -s verifica se o arquivo existe E não é vazio
+            echo "::error::Arquivo bom.json (SBOM) NÃO foi gerado pelo Syft ou está vazio."
+            ls -la # Lista arquivos para depuração
+            exit 1 # Considerar falhar o build se o SBOM é crucial
+          elif grep -q '"components": \[\s*\]' bom.json; then
+            echo "::warning::Arquivo bom.json foi gerado pelo Syft, mas parece estar vazio de componentes da aplicação."
+            echo "Conteúdo completo do bom.json para depuração:"
+            cat bom.json
+          else
+            echo "SBOM (bom.json) gerado com sucesso via Syft e contém componentes."
+            echo "Conteúdo inicial do bom.json:"
+            head -n 30 bom.json
+          fi
+        shell: bash # Ajustado para bash padrão, mas o seu original também funciona
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4 # Use a versão mais recente
+        with:
+          name: sbom-cyclonedx # Nome do artefato que aparecerá no GitHub
+          path: bom.json       # Caminho para o arquivo a ser carregado
+          if-no-files-found: error # Falhar se o bom.json não for encontrado
+
+      # --- SCA com OWASP Dependency-Check ---
+      # Passo 2.3: Configurar Java, pois Dependency-Check é uma ferramenta Java.
+      - name: Configurar Java para Dependency-Check
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '17' # Verifique a versão recomendada para o Dependency-Check
 
-      - name: Rodar DepCheck
-        uses: dependency-check/Dependency-Check_Action@main
+       # Passo 2.3.1: Gerar uma chave de cache baseada na data atual.
+      - name: Gerar data para a chave do cache
+        id: cache-date
+        run: echo "DATE=$(date -u +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      # Passo 2.3.2: Restaurar o banco de dados NVD do cache, se existir.
+      - name: Cache do banco de dados NVD do Dependency-Check
+        uses: actions/cache@v4
+        id: cache-dc-nvd
         with:
-          project: 'Lopti-AppSec'
-          path: '.'
-          format: 'ALL'
-          out: 'reports'
-          # Correção: Passando a chave NVD via args como a Action exige
-          args: >
-            --nvdApiKey ${{ secrets.LOPTI_NVD_API }}
-            --enableRetired true
-        continue-on-error: true
+          # O caminho onde o Dependency-Check armazena seus dados
+          path: ~/.dependency-check/data
+          # A chave única para o cache de hoje
+          key: ${{ runner.os }}-dc-nvd-cache-v3-${{ env.DATE }}
+          # Chave de fallback para restaurar o cache mais recente de dias anteriores
+          restore-keys: |
+            ${{ runner.os }}-dc-nvd-cache-
 
-      - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v4
-        # Garante que só tenta o upload se o arquivo foi gerado
-        if: hashFiles('reports/dependency-check-report.sarif') != ''
-        with:
-          sarif_file: reports/dependency-check-report.sarif
-          category: dependency-check
-        continue-on-error: true
+      # Passo 2.4: Baixar a ferramenta OWASP Dependency-Check CLI.
+      - name: Download OWASP Dependency-Check
+        run: |
+         DC_VERSION="12.1.0"
+          echo "Baixando OWASP Dependency-Check versão ${DC_VERSION}..."
+          wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
+          unzip dependency-check-${DC_VERSION}-release.zip
+          
+      # Passo 2.5: Executar o OWASP Dependency-Check.
+      - name: Executar OWASP Dependency-Check
+        # 'continue-on-error: true' permite que o workflow continue mesmo se o script interno do DC
+        # falhar com códigos de erro 
+        # O relatório SARIF das dependências principais geralmente é gerado antes desses erros.
+        continue-on-error: true 
+        run: |
+          echo "Iniciando OWASP Dependency-Check..."
+          ./dependency-check/bin/dependency-check.sh \
+            --scan . \
+            --project "OWASP-Juice-Shop-Fork" \
+            --format SARIF \
+            --out dependency-check-results.sarif \
+            --enableExperimental \
+            --nvdApiKey ${{ secrets.NVD_API_KEY }} \
+            --log dependency-check.log \
+            --failOnCVSS 11 # Define um threshold alto para não falhar o build por CVEs (fins didáticos)
+          
+          echo "Listando arquivos após Dependency-Check:"
+          ls -la . # Lista o diretório atual
+          
+          if [ ! -f dependency-check-results.sarif ]; then
+            echo "::error::Arquivo dependency-check-results.sarif NÃO foi gerado."
+            if [ -f dependency-check.log ]; then
+              echo "Conteúdo do log de depuração do Dependency-Check (últimas 50 linhas):"
+              tail -n 50 dependency-check.log # Mostra o final do log para depuração
+            else
+              echo "Log de depuração do Dependency-Check (dependency-check.log) não encontrado."
+            fi
+            # Não usamos 'exit 1' aqui devido ao continue-on-error no nível do step.
+          else
+            echo "Dependency-Check concluído. Relatório SARIF: dependency-check-results.sarif"
+          fi
 
-      - name: 📤 Guardar Relatório HTML
+      # Passo 2.6: Fazer upload do relatório SARIF do Dependency-Check como artefato.
+      - name: Upload do relatório SARIF do Dependency-Check (Artefato para download)
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: 2-Relatorio-SCA-HTML
-          path: reports/dependency-check-report.html
+          name: Dependency-Check-Scan-Results
+          path: dependency-check-results.sarif
+          if-no-files-found: warn # Apenas avisa se o arquivo não for encontrado
 
-  # ====================================================
-  # 3. Secret Scan (Gitleaks) - Correção de Validação SARIF
-  # ====================================================
-  secrets:
-    name: 🔑 Secret Scan
+      # Passo 2.7: Enviar o relatório SARIF do Dependency-Check para a aba "Security" do GitHub.
+      - name: Upload do resultado SARIF do Dependency-Check para GitHub Security
+        if: always() && hashFiles('dependency-check-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: dependency-check-results.sarif
+          category: owasp-dependency-check
+
+  # =====================================================================================
+  # ETAPA 3: SCAN DE SEGREDOS
+  # Objetivo: Verificar se há segredos (senhas, chaves de API, tokens) commitados
+  # acidentalmente no código-fonte do fork, INCLUINDO O HISTÓRICO COMPLETO.
+  # Ferramenta: Gitleaks
+  # =====================================================================================
+  secrets-scan:
+    name: Varredura de Segredos com Gitleaks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout do código (com histórico completo)
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Rodar Gitleaks (Versão Estável)
-        run: |
-          VERSION="8.18.4"
-          wget https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz -O gitleaks.tar.gz
-          tar -xzf gitleaks.tar.gz
-          # --redact e --exit-code=0 evitam erros de validação e quebra de build
-          ./gitleaks detect --source="." --report-path=gitleaks.sarif --report-format=sarif --redact --exit-code=0 || true
-
-      - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: gitleaks.sarif
-          category: gitleaks
+      - name: Executar Gitleaks
+        uses: gitleaks/gitleaks-action@v2
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        # A action irá gerar 'results.sarif' e fazer o upload como artefato automaticamente.
+        # As variáveis de ambiente para nome do arquivo são ignoradas.
 
-  # ====================================================
-  # 4. Infra (Trivy) - Container & FS
-  # ====================================================
-  infra:
-    name: 🐳 Trivy (Infra)
+      - name: Upload Relatório (JSON)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Relatorio-Secrets
+          path: gitleaks-report.json
+
+      - name: Upload do resultado SARIF do Gitleaks para GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+          category: gitleaks 
+          
+  # ===========================================================================
+  # ETAPA 4: SCAN DO SISTEMA DE ARQUIVOS
+  # Objetivo: Escanear o código fonte atual (.) em busca de vulns e misconfigs
+  # sem precisar criar uma imagem Docker.
+  # Ferramentas: Trivy
+  # ===========================================================================
+  trivy-scan-fs:
+    name: Scan de Código/Config (Trivy FS)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - name: Rodar Trivy (SARIF)
-        uses: aquasecurity/trivy-action@master
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Executar Trivy (Filesystem)
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           scan-type: 'fs'
-          format: 'sarif'
-          output: 'trivy.sarif'
+          scan-ref: '.'
+          format: 'sarif'                
+          output: 'trivy-fs-results.sarif' 
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          ignore-unfixed: true
+          exit-code: '0'                 # Garante que não quebra o build
 
-      - name: 🛡️ Upload Painel Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
+      - name: Upload Relatório Trivy (Artefato)
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy.sarif
-          category: trivy
-        continue-on-error: true
+          name: Relatorio-Config-Trivy
+          path: trivy-fs-results.sarif
+
+      - name: Enviar para GitHub Security
+        if: always() && hashFiles('trivy-fs-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4 
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: trivy-fs
