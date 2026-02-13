@@ -53,9 +53,15 @@ jobs:
       # "|| true" garante que o workflow continue mesmo se o Semgrep encontrar vulnerabilidades.
       - name: Executar Semgrep
         run: |
-          semgrep scan --config "p/default" --sarif --output semgrep.sarif || true
-          echo "--- Resumo Rápido ---"
-          semgrep scan --config "p/default" --text || true
+          semgrep scan \
+            --config "p/python" \
+            --config "p/owasp-top-ten" \
+            --config "p/bandit" \
+            --config "p/jwt" \
+            --sarif --output semgrep.sarif || true
+          
+          echo "--- Resumo de Segurança Python ---"
+          semgrep scan --config "p/python" --config "p/owasp-top-ten" --text || true
 
       # Passo 1.4: Fazer upload do relatório SARIF (atualmente .txt) do Semgrep como um artefato do workflow.
       # Isso permite que o leitor baixe e analise o relatório completo.
@@ -73,7 +79,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
-          category: semgrep-lopti # Categoria para agrupar os alertas no GitHub
+          category: semgrep-python-ai-litigation # Categoria para agrupar os alertas no GitHub
 
   # =====================================================================================
   # ETAPA 2: ANÁLISE DE COMPOSIÇÃO DE SOFTWARE (SCA) E GERAÇÃO DE SBOM
@@ -183,7 +189,10 @@ jobs:
         # falhar com códigos de erro 
         # O relatório SARIF das dependências principais geralmente é gerado antes desses erros.
         continue-on-error: true 
+        env:
+          JAVA_OPTS: "-Xmx6g"
         run: |
+          mkdir -p reports
           echo "Iniciando OWASP Dependency-Check..."
           ./dependency-check/bin/dependency-check.sh \
             --scan . \
@@ -192,8 +201,12 @@ jobs:
             --out dependency-check-results.sarif \
             --enableExperimental \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
+            --disableAssembly \
+            --exclude "dependency-check/**" \
+            --exclude "**/node_modules/**" \
+            --exclude "**/test/**" \
             --log dependency-check.log \
-            --failOnCVSS 11 # Define um threshold alto para não falhar o build por CVEs (fins didáticos)
+            --failOnCVSS 11 
           
           echo "Listando arquivos após Dependency-Check:"
           ls -la . # Lista o diretório atual
@@ -225,7 +238,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: dependency-check-results.sarif
-          category: owasp-dependency-check
+          category: owasp-dependency-check-ai-litigation
 
   # =====================================================================================
   # ETAPA 3: SCAN DE SEGREDOS
@@ -256,7 +269,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
-          category: gitleaks 
+          category: gitleaks-ai-litigation
           
   # ===========================================================================
   # ETAPA 4: SCAN DO SISTEMA DE ARQUIVOS
@@ -293,4 +306,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4 
         with:
           sarif_file: 'trivy-fs-results.sarif'
-          category: trivy-fs
+          category: trivy-fs-ai-litigation
