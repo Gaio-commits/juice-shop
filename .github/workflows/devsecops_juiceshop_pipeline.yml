@@ -30,10 +30,6 @@ jobs:
   sast-analysis:
     name: Análise Estática de Segurança (SAST com Semgrep)
     runs-on: ubuntu-latest
-    permissions: # Permissões necessárias para as actions deste job
-      actions: read 
-      contents: read     # Para fazer checkout do código
-      security-events: write # Para Semgrep enviar resultados para a aba Security
     steps:
     
       # Passo 1.1: Baixar o código-fonte do fork do leitor.
@@ -194,7 +190,7 @@ jobs:
           echo "Iniciando OWASP Dependency-Check..."
           ./dependency-check/bin/dependency-check.sh \
             --scan . \
-            --project "OWASP-Juice-Shop-Fork" \
+            --project "Lopti-Monorepo" \
             --format SARIF \
             --out dependency-check-results.sarif \
             --enableExperimental \
