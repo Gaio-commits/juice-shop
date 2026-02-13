@@ -84,9 +84,6 @@ jobs:
   sca-analysis:
     name: Análise de Composição de Software (SCA) e Geração de SBOM
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       # Passo 2.1: Baixar o código-fonte
       - name: Checkout do código do repositório (fork do leitor)
@@ -239,10 +236,6 @@ jobs:
   secrets-scan:
     name: Varredura de Segredos com Gitleaks
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
     steps:
       - name: Checkout do código (com histórico completo)
         uses: actions/checkout@v4
@@ -274,8 +267,6 @@ jobs:
   trivy-scan-fs:
     name: Scan de Código/Config (Trivy FS)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
