@@ -88,10 +88,18 @@ jobs:
 
       - name: Instalar Dependências
         run: |
-          echo "Instalando dependências..."
-          npm install --prefer-offline --no-audit --no-fund
-          if [ -d "frontend" ]; then cd frontend && npm install --prefer-offline --no-audit --no-fund && cd ..; fi
-
+          echo "Instalando dependências (ignorando conflitos de peer-deps)..."
+          # Adicionei --legacy-peer-deps para resolver o erro ERESOLVE
+          # Adicionei --ignore-scripts por segurança (para não rodar scripts post-install maliciosos durante o scan)
+          npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+          
+          if [ -d "frontend" ]; then 
+            echo "Instalando dependências do Frontend..."
+            cd frontend 
+            npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+            cd ..
+          fi
+          
       # Passo 2.2: Gerar o Software Bill of Materials (SBOM) no formato CycloneDX JSON usando Syft.
       # Syft escaneia o diretório do projeto e identifica componentes.
       - name: Gerar SBOM com Syft (CycloneDX JSON)
