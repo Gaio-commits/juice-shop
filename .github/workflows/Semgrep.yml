@@ -86,14 +86,10 @@ jobs:
       - name: Checkout do código do repositório (fork)
         uses: actions/checkout@v4
 
-      - name: Gerar/Atualizar package-lock.json (ignorando scripts)
+      - name: Instalar Dependências e Gerar Lockfile
         run: |
-          echo "Gerando/Atualizando package-lock.json..."
-          npm install --package-lock-only --ignore-scripts
-          if [ ! -f "package-lock.json" ]; then
-            echo "::error::Arquivo package-lock.json não foi gerado/atualizado."
-            exit 1
-          fi
+          echo "Instalando dependências..."
+          npm ci
 
       # Passo 2.2: Gerar o Software Bill of Materials (SBOM) no formato CycloneDX JSON usando Syft.
       # Syft escaneia o diretório do projeto e identifica componentes.
@@ -141,6 +137,14 @@ jobs:
           if-no-files-found: error # Falhar se o bom.json não for encontrado
 
       # --- SCA com OWASP Dependency-Check ---
+
+      # Instalar dependências reais para o scanner ler corretamente
+      - name: Instalar Dependências do Projeto (Node.js)
+        run: |
+          npm ci # 'ci' é mais rápido e seguro que 'install' para pipelines
+          # Se tiver subpastas (como vi 'frontend' no log), instale nelas também:
+          if [ -d "frontend" ]; then cd frontend && npm ci && cd ..; fi
+          
       # Passo 2.3: Configurar Java, pois Dependency-Check é uma ferramenta Java.
       - name: Configurar Java para Dependency-Check
         uses: actions/setup-java@v4
@@ -167,12 +171,11 @@ jobs:
             ${{ runner.os }}-dc-nvd-cache-
 
       # Passo 2.4: Baixar a ferramenta OWASP Dependency-Check CLI.
-      - name: Download OWASP Dependency-Check
+      - name: Instalar OWASP Dependency-Check
         run: |
-         DC_VERSION="12.1.0"
-          echo "Baixando OWASP Dependency-Check versão ${DC_VERSION}..."
-          wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip
-          unzip dependency-check-${DC_VERSION}-release.zip
+          DC_VERSION="12.1.0"
+          wget https://github.com/jeremylong/DependencyCheck/releases/download/v${DC_VERSION}/dependency-check-${DC_VERSION}-release.zip -O $RUNNER_TEMP/dc.zip
+          unzip $RUNNER_TEMP/dc.zip -d $RUNNER_TEMP/dependency-check
           
       # Passo 2.5: Executar o OWASP Dependency-Check.
       - name: Executar OWASP Dependency-Check
@@ -186,20 +189,19 @@ jobs:
           OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
         run: |
           mkdir -p reports
-          echo "Iniciando OWASP Dependency-Check..."
-          ./dependency-check/bin/dependency-check.sh \
+          # Executa chamando o binário lá da pasta TEMP
+          $RUNNER_TEMP/dependency-check/dependency-check/bin/dependency-check.sh \
             --scan . \
-            --project "Lopti-Monorepo" \
+            --project "Lopti-App-Sec" \
             --format SARIF \
             --out dependency-check-results.sarif \
             --enableExperimental \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
             --disableAssembly \
-            --exclude "dependency-check/**" \
             --exclude "**/node_modules/**" \
             --exclude "**/test/**" \
-            --log dependency-check.log \
-            --failOnCVSS 11 
+            --exclude "$RUNNER_TEMP/**" \
+            --failOnCVSS 11
           
           echo "Listando arquivos após Dependency-Check:"
           ls -la . # Lista o diretório atual
@@ -282,6 +284,7 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          scanners: 'vuln,misconfig,license'
           format: 'sarif'                
           output: 'trivy-fs-results.sarif' 
           severity: 'CRITICAL,HIGH'
