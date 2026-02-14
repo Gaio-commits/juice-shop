@@ -182,6 +182,8 @@ jobs:
         continue-on-error: true 
         env:
           JAVA_OPTS: "-Xmx6g"
+          OSSINDEX_USER: ${{ secrets.OSS_INDEX_USER }}
+          OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
         run: |
           mkdir -p reports
           echo "Iniciando OWASP Dependency-Check..."
@@ -192,9 +194,6 @@ jobs:
             --out dependency-check-results.sarif \
             --enableExperimental \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
-            --ossIndexWarnOnly \
-            --ossIndexUser ${{ secrets.OSS_INDEX_USER }} \
-            --ossIndexPassword ${{ secrets.OSS_INDEX_KEY }} \
             --disableAssembly \
             --exclude "dependency-check/**" \
             --exclude "**/node_modules/**" \
