@@ -86,10 +86,12 @@ jobs:
       - name: Checkout do código do repositório (fork)
         uses: actions/checkout@v4
 
-      - name: Instalar Dependências e Gerar Lockfile
+      - name: Instalar Dependências do Projeto
         run: |
-          echo "Instalando dependências..."
-          npm ci
+          echo "Instalando dependências e gerando ambiente para análise..."
+          npm install
+          # Se houver uma pasta específica para o frontend, descomente a linha abaixo:
+          # if [ -d "frontend" ]; then cd frontend && npm install && cd ..; fi
 
       # Passo 2.2: Gerar o Software Bill of Materials (SBOM) no formato CycloneDX JSON usando Syft.
       # Syft escaneia o diretório do projeto e identifica componentes.
@@ -137,14 +139,6 @@ jobs:
           if-no-files-found: error # Falhar se o bom.json não for encontrado
 
       # --- SCA com OWASP Dependency-Check ---
-
-      # Instalar dependências reais para o scanner ler corretamente
-      - name: Instalar Dependências do Projeto (Node.js)
-        run: |
-          npm ci # 'ci' é mais rápido e seguro que 'install' para pipelines
-          # Se tiver subpastas (como vi 'frontend' no log), instale nelas também:
-          if [ -d "frontend" ]; then cd frontend && npm ci && cd ..; fi
-          
       # Passo 2.3: Configurar Java, pois Dependency-Check é uma ferramenta Java.
       - name: Configurar Java para Dependency-Check
         uses: actions/setup-java@v4
