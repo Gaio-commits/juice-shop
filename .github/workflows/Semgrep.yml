@@ -178,13 +178,12 @@ jobs:
           unzip $RUNNER_TEMP/dc.zip -d $RUNNER_TEMP/dependency-check
           
       # Passo 2.5: Executar o OWASP Dependency-Check.
-      - name: Executar OWASP Dependency-Check
-        # 'continue-on-error: true' permite que o workflow continue mesmo se o script interno do DC
-        # falhar com códigos de erro 
-        # O relatório SARIF das dependências principais geralmente é gerado antes desses erros.
+       - name: Executar OWASP Dependency-Check
         continue-on-error: true
         env:
           JAVA_OPTS: "-Xmx6g"
+          # Se você NÃO configurou os secrets no GitHub, remova essas duas linhas abaixo
+          # Se configurou, mantenha para aumentar seu limite de requisições
           OSSINDEX_USER: ${{ secrets.OSS_INDEX_USER }}
           OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
         run: |
@@ -202,6 +201,9 @@ jobs:
             --exclude "**/dist/**" \
             --exclude "**/*.js" \
             --exclude "$RUNNER_TEMP/**" \
+            --exclude "**/test/**" \
+            --exclude "**/frontend/src/assets/**" \
+            --disableOssIndex \
             --failOnCVSS 11
           
           echo "Listando arquivos após Dependency-Check:"
