@@ -192,6 +192,9 @@ jobs:
             --out dependency-check-results.sarif \
             --enableExperimental \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
+            --ossIndexWarnOnly \
+            --ossIndexUser ${{ secrets.OSS_INDEX_USER }} \
+            --ossIndexPassword ${{ secrets.OSS_INDEX_KEY }} \
             --disableAssembly \
             --exclude "dependency-check/**" \
             --exclude "**/node_modules/**" \
