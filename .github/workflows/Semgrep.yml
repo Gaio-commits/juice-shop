@@ -162,7 +162,7 @@ jobs:
         uses: actions/cache@v4
         with:
           # O caminho onde o Dependency-Check armazena seus dados
-          path: ~/.dependency-check/data
+          path: ${{ runner.temp }}/nvd-data
           # A chave única para o cache de hoje
           key: ${{ runner.os }}-nvd-db-${{ steps.date.outputs.today }}
           # Chave de fallback para restaurar o cache mais recente de dias anteriores
@@ -185,6 +185,7 @@ jobs:
           mkdir -p reports
           $RUNNER_TEMP/dependency-check/dependency-check/bin/dependency-check.sh \
             --scan . \
+            --data "${{ runner.temp }}/nvd-data" \
             --project "Lopti-App-Sec" \
             --format SARIF \
             --out dependency-check-results.sarif \
@@ -216,6 +217,14 @@ jobs:
             # Não usamos 'exit 1' aqui devido ao continue-on-error no nível do step.
           else
             echo "Dependency-Check concluído. Relatório SARIF: dependency-check-results.sarif"
+          fi
+
+      - name: Sanitizar relatório SARIF (Opcional)
+        run: |
+          if [ -f dependency-check-results.sarif ]; then
+            echo "Limpando URIs inválidas no SARIF..."
+            sed -i 's|package-lock.json?[^"]*|package-lock.json|g' dependency-check-results.sarif
+            sed -i 's|package-lock.json?[^"]*|package-lock.json|g' dependency-check-results.sarif
           fi
 
       # Passo 2.6: Fazer upload do relatório SARIF do Dependency-Check como artefato.
