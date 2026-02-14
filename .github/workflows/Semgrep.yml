@@ -178,7 +178,7 @@ jobs:
           unzip $RUNNER_TEMP/dc.zip -d $RUNNER_TEMP/dependency-check
           
       # Passo 2.5: Executar o OWASP Dependency-Check.
-       - name: Executar OWASP Dependency-Check
+      - name: Executar OWASP Dependency-Check
         continue-on-error: true
         env:
           JAVA_OPTS: "-Xmx6g"
