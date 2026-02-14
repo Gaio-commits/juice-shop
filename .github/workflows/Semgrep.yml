@@ -184,8 +184,8 @@ jobs:
           JAVA_OPTS: "-Xmx6g"
           # Se você NÃO configurou os secrets no GitHub, remova essas duas linhas abaixo
           # Se configurou, mantenha para aumentar seu limite de requisições
-          OSSINDEX_USER: ${{ secrets.OSS_INDEX_USER }}
-          OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
+         # OSSINDEX_USER: ${{ secrets.OSS_INDEX_USER }}
+         # OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
         run: |
           mkdir -p reports
           $RUNNER_TEMP/dependency-check/dependency-check/bin/dependency-check.sh \
