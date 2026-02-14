@@ -14,6 +14,7 @@ on:
     branches:
       - 'feature/appsec-workflow'
     #  - main  <--- Comentando a main por enquanto para não rodar em produção
+    
 permissions:
   contents: read
   security-events: write
@@ -86,17 +87,15 @@ jobs:
       - name: Checkout do código do repositório (fork)
         uses: actions/checkout@v4
 
-      - name: Instalar Dependências
+      - name: Instalar Dependências e Gerar Lockfile
         run: |
           echo "Instalando dependências (ignorando conflitos de peer-deps)..."
-          # Adicionei --legacy-peer-deps para resolver o erro ERESOLVE
-          # Adicionei --ignore-scripts por segurança (para não rodar scripts post-install maliciosos durante o scan)
-          npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+          npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts --package-lock
           
           if [ -d "frontend" ]; then 
             echo "Instalando dependências do Frontend..."
             cd frontend 
-            npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+            npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --ignore-scripts --package-lock
             cd ..
           fi
           
@@ -182,10 +181,6 @@ jobs:
         continue-on-error: true
         env:
           JAVA_OPTS: "-Xmx6g"
-          # Se você NÃO configurou os secrets no GitHub, remova essas duas linhas abaixo
-          # Se configurou, mantenha para aumentar seu limite de requisições
-         # OSSINDEX_USER: ${{ secrets.OSS_INDEX_USER }}
-         # OSSINDEX_PASSWORD: ${{ secrets.OSS_INDEX_KEY }}
         run: |
           mkdir -p reports
           $RUNNER_TEMP/dependency-check/dependency-check/bin/dependency-check.sh \
@@ -195,6 +190,8 @@ jobs:
             --out dependency-check-results.sarif \
             --enableExperimental \
             --nvdApiKey ${{ secrets.NVD_API_KEY }} \
+            --ossIndexUsername ${{ secrets.OSS_INDEX_USER }} \
+            --ossIndexPassword ${{ secrets.OSS_INDEX_KEY }} \
             --disableAssembly \
             --exclude "**/node_modules/**" \
             --exclude "**/build/**" \
@@ -203,7 +200,6 @@ jobs:
             --exclude "$RUNNER_TEMP/**" \
             --exclude "**/test/**" \
             --exclude "**/frontend/src/assets/**" \
-            --disableOssIndex \
             --failOnCVSS 11
           
           echo "Listando arquivos após Dependency-Check:"
